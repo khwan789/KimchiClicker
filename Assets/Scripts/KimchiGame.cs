@@ -272,7 +272,10 @@ public class KimchiGame : MonoBehaviour
         // achievements
         producerClaimedMilestones = new int[producers.Count]; // counts (first obtain + per 10 levels)
         // storage state
-        foreach (var s in storage) { s.unlocked = false; s.claimed = false; }
+        foreach (var s in storage) { 
+            s.unlocked = false; 
+            s.claimed = false; 
+        }
         unlockedStorageCount = 0;
         prestigeAvailable = false;
     }
@@ -332,28 +335,24 @@ public class KimchiGame : MonoBehaviour
     }
 
     // CPS: sum_i baseRate * L * (1 + L*1%) * global
+    // Total CPS (buffed)
     public BigNumber CPS()
     {
-        BigNumber sum = BigNumber.Zero;
-        int n = Mathf.Min(producers.Count, states.Count);   // <-- guard
+        BigNumber sumBase = BigNumber.Zero;
+        int n = Mathf.Min(producers.Count, states.Count);
         for (int i = 0; i < n; i++)
-        {
-            int L = states[i].level;
-            if (L <= 0) continue;
-            double selfMult = L * (1.0 + 0.01 * L);
-            var part = producers[i].baseRate * selfMult;
-            sum = sum + part;
-        }
-        return sum * GlobalMultiplier();
+            sumBase = sumBase + ProducerBaseCPS(i);
+
+        return sumBase * GlobalMultiplier();
     }
 
     // Tap: max(1, sum of all producer levels) * global
     public void OnTap()
     {
         int sumLv = 0;
-        for (int i = 0; i < states.Count; i++) sumLv += states[i].level;
+        for (int i = 0; i < states.Count; i++) sumLv += (states[i].level * (int)(1 + 0.1 * states[i].level));
         int baseTap = Mathf.Max(manualBasePerTap, sumLv);
-        lastTapGain = BigNumber.FromDouble(baseTap) * (BigNumber.FromDouble(baseTap) / 5) * GlobalMultiplier();
+        lastTapGain = BigNumber.FromDouble(baseTap) * GlobalMultiplier();
         kimchi = kimchi + lastTapGain;
         Changed();
     }
@@ -363,19 +362,6 @@ public class KimchiGame : MonoBehaviour
     {
         var gain = CPS() * seconds;
         kimchi = kimchi + gain;
-
-        // storage unlock check
-        var perSec = CPS();
-        for (int i = 0; i < storage.Length; i++)
-        {
-            if (!storage[i].unlocked && perSec >= storage[i].cpsThreshold)
-            {
-                storage[i].unlocked = true;
-                unlockedStorageCount++;
-                // Reward is now claimable via ClaimStorageMilestone(i)
-                Changed();
-            }
-        }
 
         // prestige available?
         prestigeAvailable = (unlockedStorageCount >= storage.Length);
@@ -388,30 +374,30 @@ public class KimchiGame : MonoBehaviour
         }
     }
 
-    // CPS produced by a specific producer at its current level
-    public BigNumber ProducerCPS(int index)
+    // Base (no global multiplier)
+    public BigNumber ProducerBaseCPSAtLevel(int index, int level)
     {
-        int L = states[index].level;
-        return ProducerCPSAtLevel(index, L);
-    }
-
-    // CPS produced by this producer if it had a specific level
-    public BigNumber ProducerCPSAtLevel(int index, int level)
-    {
-        if (level <= 0) return BigNumber.Zero;
+        if (index < 0 || index >= producers.Count || level <= 0) return BigNumber.Zero;
         var def = producers[index];
-        double selfMult = level * (1.0 + 0.2 * level); // L * (1 + 1% * L)
-        var part = def.baseRate * selfMult;
-        return part * GlobalMultiplier();
+        double selfMult = level * (1.0 + 0.1 * level); // L * (1 + 1% * L)
+        return def.baseRate * selfMult;                 // <-- NO GlobalMultiplier here
     }
 
-    // CPS increase if you buy the current buyAmount (1/10/100)
+    // Convenience
+    public BigNumber ProducerBaseCPS(int index) =>
+        ProducerBaseCPSAtLevel(index, states[index].level);
+
+    // Final (buffed)
+    public BigNumber ProducerCPS(int index) =>
+        ProducerBaseCPS(index) * GlobalMultiplier();
+
+    // If buying k levels
     public BigNumber ProducerCPSDiffForPurchase(int index, int k)
     {
         int L = states[index].level;
-        var curr = ProducerCPSAtLevel(index, L);
-        var next = ProducerCPSAtLevel(index, L + k);
-        return next - curr; // non-negative
+        var before = ProducerBaseCPSAtLevel(index, L);
+        var after = ProducerBaseCPSAtLevel(index, L + k);
+        return (after - before) * GlobalMultiplier();
     }
 
     void EnsureArrayWithDefault(ref int[] arr, int targetLen, int defVal)
@@ -563,6 +549,27 @@ public class KimchiGame : MonoBehaviour
 
         Changed();
         Save();
+    }
+
+    public bool CanUnlockStorage(int index)
+    {
+        if (index < 0 || index >= storage.Length) return false;
+        var s = storage[index];
+        if (s.unlocked) return false;
+
+        var perSec = CPS(); // BigNumber
+        return perSec.CompareTo(s.cpsThreshold) >= 0; // perSec >= threshold
+    }
+
+    public bool TryUnlockStorage(int index)
+    {
+        if (!CanUnlockStorage(index)) return false;
+
+        storage[index].unlocked = true;
+        unlockedStorageCount++;
+        Changed();
+        Save();
+        return true;
     }
     #endregion
 
@@ -777,9 +784,9 @@ public class KimchiGame : MonoBehaviour
 
     public BigNumber CPS_ManualTapPreview()
     {
-        int sumLv = 0; for (int i = 0; i < states.Count; i++) sumLv += states[i].level;
+        int sumLv = 0; for (int i = 0; i < states.Count; i++) sumLv += (states[i].level * (int)(1 + 0.1 * states[i].level));
         int baseTap = Mathf.Max(manualBasePerTap, sumLv);
-        return BigNumber.FromDouble(baseTap) * (BigNumber.FromDouble(baseTap) / 5) * GlobalMultiplier();
+        return BigNumber.FromDouble(baseTap) * GlobalMultiplier();
     }
 
     void Changed() { OnAnyChanged?.Invoke(); }

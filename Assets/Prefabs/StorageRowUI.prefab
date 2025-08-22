@@ -421,7 +421,7 @@ GameObject:
   - component: {fileID: 2163701137680554921}
   - component: {fileID: 4400256912070585593}
   m_Layer: 5
-  m_Name: ContainerRowUI
+  m_Name: StorageRowUI
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -512,7 +512,7 @@ MonoBehaviour:
   txtBuff: {fileID: 129750073461464266}
   txtThreshold: {fileID: 1146594354127040133}
   txtContribution: {fileID: 7179057643775251368}
-  btnAction: {fileID: 103200962339815905}
+  btnUnlock: {fileID: 103200962339815905}
   btnLabel: {fileID: 480596716935622315}
 --- !u!1 &3979158840356728081
 GameObject:
